@@ -6,17 +6,16 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/joho/godotenv" // Добавляем импорт
-	_ "github.com/lib/pq"      // Импортируем драйвер PostgreSQL
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 func ConnectToDatabase() (*sql.DB, error) {
-	// Загружаем переменные окружения из .env файла
+
 	err := godotenv.Load()
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при загрузке .env файла: %w", err)
 	}
-	// Извлекаем значения из переменных окружения
 	user, ok := os.LookupEnv("POSTGRES_USER")
 	if !ok || user == "" {
 		return nil, fmt.Errorf("переменная окружения POSTGRES_USER не задана")
@@ -56,7 +55,7 @@ func ConnectToDatabase() (*sql.DB, error) {
 	return db, nil
 }
 func GetBeers(db *sql.DB) ([]models.Beer, error) {
-	rows, err := db.Query("SELECT id, name, description, price, quantity, image_url FROM beers")
+	rows, err := db.Query("SELECT id, name, price, quantity, type FROM beers")
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при выполнении запроса: %w", err)
 	}
@@ -65,7 +64,7 @@ func GetBeers(db *sql.DB) ([]models.Beer, error) {
 	var beers []models.Beer
 	for rows.Next() {
 		var beer models.Beer
-		err := rows.Scan(&beer.ID, &beer.Name, &beer.Description, &beer.Price, &beer.Quantity, &beer.ImageURL)
+		err := rows.Scan(&beer.ID, &beer.Name, &beer.Price, &beer.Quantity, &beer.Type)
 		if err != nil {
 			return nil, fmt.Errorf("ошибка при чтении данных: %w", err)
 		}

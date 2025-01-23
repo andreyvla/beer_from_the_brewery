@@ -9,22 +9,22 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-var beers []models.Beer //  Глобальная переменная для хранения списка пива
+var beers []models.Beer
 var beersMutex = &sync.Mutex{}
+var waitingForSearchQuery = make(map[int64]bool)
 
 func StartBot(db *sql.DB) {
-	// Получаем токен бота из переменных окружения
 	botToken := os.Getenv("BOT_TOKEN")
 	if botToken == "" {
 		log.Fatal("BOT_TOKEN не задан!")
 	}
 
-	// Создаем новый бот
 	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Fatal(err)
@@ -36,7 +36,6 @@ func StartBot(db *sql.DB) {
 	beers, err = database.GetBeers(db)
 	if err != nil {
 		log.Printf("Ошибка при начальной загрузке списка пива: %s", err.Error())
-		// Здесь можно добавить обработку ошибки, например, завершить работу бота
 	}
 	beersMutex.Unlock()
 	go updateBeerList(db)
@@ -56,12 +55,13 @@ func StartBot(db *sql.DB) {
 		if update.Message != nil && update.Message.IsCommand() && update.Message.Command() == "start" {
 			keyboard := tgbotapi.NewInlineKeyboardMarkup(
 				tgbotapi.NewInlineKeyboardRow(
-					tgbotapi.NewInlineKeyboardButtonData("Показать пиво", "beer"), //  Data - это то, что вернется в callback
+					tgbotapi.NewInlineKeyboardButtonData("Показать пиво", "beer"),
+					tgbotapi.NewInlineKeyboardButtonData("Найти пиво", "search"),
 				),
 			)
 
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Привет! Я бот для покупки пива. Выберите действие:")
-			msg.ReplyMarkup = keyboard //  Прикрепляем клавиатуру к сообщению
+			msg.ReplyMarkup = keyboard
 			bot.Send(msg)
 		} else if update.CallbackQuery != nil { //  Обработка нажатия на кнопку
 			callback := tgbotapi.NewCallback(update.CallbackQuery.ID, update.CallbackQuery.Data)
@@ -73,27 +73,54 @@ func StartBot(db *sql.DB) {
 			case "beer":
 
 				if len(beers) == 0 {
-					sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Пива нет :(", "") // parseMode пустая для обычного текста
+					sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Пива нет :(", "")
 					continue
 				}
-				beerList := formatBeerList(beers)
-				sendMessage(bot, update.CallbackQuery.Message.Chat.ID, beerList, "Markdown") // parseMode "Markdown"
+				beerList := formatBeerList(beers, "")
+				sendMessage(bot, update.CallbackQuery.Message.Chat.ID, beerList, "Markdown")
+			case "search": // Обработчик кнопки "Найти пиво"
+				msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, "Введите название пива для поиска:")
+				msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true) // Убираем клавиатуру после нажатия на кнопку поиска
+				bot.Send(msg)
 
+				// Устанавливаем состояние ожидания поискового запроса
+				waitingForSearchQuery[update.CallbackQuery.Message.Chat.ID] = true
 			}
+
+		} else if update.Message != nil && !update.Message.IsCommand() {
+			// Проверяем, ожидает ли бот поисковый запрос от пользователя
+			if waitingForSearchQuery[update.Message.Chat.ID] {
+				searchQuery := update.Message.Text
+				beerList := formatBeerList(beers, searchQuery)
+				sendMessage(bot, update.Message.Chat.ID, beerList, "Markdown")
+				delete(waitingForSearchQuery, update.Message.Chat.ID) // Сбрасываем состояние ожидания
+			}
+
 		}
 	}
 }
 
-func formatBeerList(beers []models.Beer) string {
+func formatBeerList(beers []models.Beer, searchQuery string) string {
 	beersMutex.Lock()
 	defer beersMutex.Unlock()
+
 	var beerList string
+
 	for _, beer := range beers {
-		beerList += fmt.Sprintf("*%s*\n%s\nЦена: %d\nВ наличии: %d\n\n", beer.Name, beer.Description, beer.Price, beer.Quantity)
+		if searchQuery == "" || containsIgnoreCase(beer.Name, searchQuery) || containsIgnoreCase(beer.Type, searchQuery) {
+			beerList += fmt.Sprintf("*%d. %s - %s*\nЦена: %.2f\nВ наличии: %d\n\n", beer.ID, beer.Name, beer.Type, beer.Price, beer.Quantity)
+		}
 	}
+
+	if beerList == "" && searchQuery != "" {
+		return "Пиво не найдено."
+	}
+
 	return beerList
 }
-
+func containsIgnoreCase(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
 func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, parseMode string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	if parseMode != "" {
@@ -115,6 +142,6 @@ func updateBeerList(db *sql.DB) {
 		}
 		beersMutex.Unlock() // Разблокируем доступ к beers
 
-		time.Sleep(5 * time.Minute) // Обновляем список каждые 5 минут
+		time.Sleep(5 * time.Minute)
 	}
 }
