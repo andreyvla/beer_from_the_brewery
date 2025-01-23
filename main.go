@@ -2,7 +2,7 @@ package main
 
 import (
 	"beer_from_the_brewery/database"
-	"beer_from_the_brewery/telegram" //  Импортируем пакет telegram
+	"beer_from_the_brewery/telegram"
 
 	"fmt"
 
