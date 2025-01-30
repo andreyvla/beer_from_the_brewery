@@ -70,14 +70,14 @@ func StartBot(db *sql.DB) {
 			}
 
 			switch update.CallbackQuery.Data {
-			case "beer":
+			case "beer": // Обработчик кнопки "Показать пиво"
 
-				if len(beers) == 0 {
-					sendMessage(bot, update.CallbackQuery.Message.Chat.ID, "Пива нет :(", "")
-					continue
-				}
-				beerList := formatBeerList(beers, "")
+				beersMutex.Lock()
+				beerList := formatShortBeerList(beers)
+				beersMutex.Unlock()
+
 				sendMessage(bot, update.CallbackQuery.Message.Chat.ID, beerList, "Markdown")
+
 			case "search": // Обработчик кнопки "Найти пиво"
 				msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, "Введите название пива для поиска:")
 				msg.ReplyMarkup = tgbotapi.NewRemoveKeyboard(true) // Убираем клавиатуру после нажатия на кнопку поиска
@@ -88,39 +88,67 @@ func StartBot(db *sql.DB) {
 			}
 
 		} else if update.Message != nil && !update.Message.IsCommand() {
-			// Проверяем, ожидает ли бот поисковый запрос от пользователя
 			if waitingForSearchQuery[update.Message.Chat.ID] {
 				searchQuery := update.Message.Text
-				beerList := formatBeerList(beers, searchQuery)
-				sendMessage(bot, update.Message.Chat.ID, beerList, "Markdown")
-				delete(waitingForSearchQuery, update.Message.Chat.ID) // Сбрасываем состояние ожидания
-			}
+				beersMutex.Lock()
+				foundBeers := searchBeers(beers, searchQuery)
+				beersMutex.Unlock()
 
+				if len(foundBeers) == 0 {
+					sendMessage(bot, update.Message.Chat.ID, "Пиво не найдено.", "")
+				}
+
+				for _, beer := range foundBeers {
+					beerInfo, photoURL := formatDetailedBeerInfo(beer)
+
+					sendMessage(bot, update.Message.Chat.ID, beerInfo, "Markdown")
+
+					if photoURL != "" {
+						// Создаем NewPhotoUpload, используя URL картинки
+						photoMsg := tgbotapi.NewPhotoUpload(update.Message.Chat.ID, photoURL)
+
+						if _, err := bot.Send(photoMsg); err != nil { // Отправляем photoMsg
+							log.Println(err)
+							sendMessage(bot, update.Message.Chat.ID, "Ошибка при отправке картинки. Пожалуйста, попробуйте позже.", "")
+						}
+					}
+				}
+
+				delete(waitingForSearchQuery, update.Message.Chat.ID)
+			}
 		}
 	}
 }
-
-func formatBeerList(beers []models.Beer, searchQuery string) string {
-	beersMutex.Lock()
-	defer beersMutex.Unlock()
-
-	var beerList string
-
+func searchBeers(beers []models.Beer, searchQuery string) []models.Beer {
+	var foundBeers []models.Beer
 	for _, beer := range beers {
-		if searchQuery == "" || containsIgnoreCase(beer.Name, searchQuery) || containsIgnoreCase(beer.Type, searchQuery) {
-			beerList += fmt.Sprintf("*%d. %s - %s*\nЦена: %.2f\nВ наличии: %d\n\n", beer.ID, beer.Name, beer.Type, beer.Price, beer.Quantity)
+		if containsIgnoreCase(beer.Name, searchQuery) {
+			foundBeers = append(foundBeers, beer)
 		}
 	}
+	return foundBeers
+}
 
-	if beerList == "" && searchQuery != "" {
-		return "Пиво не найдено."
+func formatShortBeerList(beers []models.Beer) string {
+	var beerList string
+	for _, beer := range beers {
+		beerList += fmt.Sprintf("*%d. %s - %s*\nЦена: %.2f\nВ наличии: %d\n\n", beer.ID, beer.Name, beer.Type, beer.Price, beer.Quantity) // Убрали beer.Description
 	}
-
+	if beerList == "" {
+		return "Пива нет :("
+	}
 	return beerList
 }
+
+func formatDetailedBeerInfo(beer models.Beer) (string, string) {
+	beerInfo := fmt.Sprintf("*%s - %s*\nЦена: %.2f\nВ наличии: %d\n%s", beer.Name, beer.Type, beer.Price, beer.Quantity, beer.ImageURL) // ImageURL здесь
+	return beerInfo, beer.Description                                                                                                   // Description здесь
+}
+
 func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
+
 func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, parseMode string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	if parseMode != "" {
@@ -133,14 +161,14 @@ func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, parseMode stri
 
 func updateBeerList(db *sql.DB) {
 	for {
-		beersMutex.Lock() // Блокируем доступ к beers
 		newBeers, err := database.GetBeers(db)
 		if err != nil {
 			log.Printf("Ошибка при обновлении списка пива: %s", err.Error())
 		} else {
-			beers = newBeers // Обновляем список пива
+			beersMutex.Lock()
+			beers = newBeers
+			beersMutex.Unlock()
 		}
-		beersMutex.Unlock() // Разблокируем доступ к beers
 
 		time.Sleep(5 * time.Minute)
 	}
