@@ -55,16 +55,16 @@ func ConnectToDatabase() (*sql.DB, error) {
 	return db, nil
 }
 func GetBeers(db *sql.DB) ([]models.Beer, error) {
-	rows, err := db.Query("SELECT id, name, price, quantity, type FROM beers")
+	rows, err := db.Query("SELECT id, name, price, quantity, type, image_url, description FROM beers")
 	if err != nil {
-		return nil, fmt.Errorf("ошибка при выполнении запроса: %w", err)
+		return nil, fmt.Errorf("ошибка при выполнении запросsа: %w", err)
 	}
 	defer rows.Close()
 
 	var beers []models.Beer
 	for rows.Next() {
 		var beer models.Beer
-		err := rows.Scan(&beer.ID, &beer.Name, &beer.Price, &beer.Quantity, &beer.Type)
+		err := rows.Scan(&beer.ID, &beer.Name, &beer.Price, &beer.Quantity, &beer.Type, &beer.Description, &beer.ImageURL)
 		if err != nil {
 			return nil, fmt.Errorf("ошибка при чтении данных: %w", err)
 		}
