@@ -77,7 +77,6 @@ func GetBeers(db *sql.DB) ([]models.Beer, error) {
 	return beers, nil
 }
 func SearchBeers(db *sql.DB, searchQuery string) ([]models.Beer, error) {
-	// Здесь лучше использовать параметризованный запрос для защиты от SQL-инъекций
 	rows, err := db.Query("SELECT id, name, price, quantity, type, image_url, description FROM beers WHERE lower(name) LIKE lower($1)", "%"+searchQuery+"%")
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при выполнении запроса: %w", err)
@@ -101,7 +100,7 @@ func GetBeerByID(db *sql.DB, beerID int) (*models.Beer, error) {
 	err := db.QueryRow("SELECT id, name, price, quantity, type, image_url, description FROM beers WHERE id = $1", beerID).Scan(&beer.ID, &beer.Name, &beer.Price, &beer.Quantity, &beer.Type, &beer.ImageURL, &beer.Description)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil // Возвращаем nil, nil, если пиво не найдено
+			return nil, nil
 		}
 		return nil, fmt.Errorf("ошибка при получении пива по ID: %w", err)
 	}
@@ -129,9 +128,9 @@ func CreateOrder(db *sql.DB, userID int64, cartItems []models.CartItem) error {
 	if err != nil {
 		return fmt.Errorf("не удалось начать транзакцию: %w", err)
 	}
-	defer tx.Rollback() // Откатываем транзакцию в случае ошибки
+	defer tx.Rollback()
 
-	// 1. Создаем запись в таблице orders, используя RETURNING id
+	// Создаем запись в таблице orders, используя RETURNING id
 	orderDate := time.Now()
 	orderStatus := "new" // начальный статус заказа
 
@@ -141,7 +140,7 @@ func CreateOrder(db *sql.DB, userID int64, cartItems []models.CartItem) error {
 		return fmt.Errorf("не удалось получить ID заказа: %w", err)
 	}
 
-	// 2. Создаем записи в таблице order_items для каждого товара в корзине
+	// Создаем записи в таблице order_items для каждого товара в корзине
 	for _, cartItem := range cartItems {
 		_, err = tx.Exec("INSERT INTO order_items (order_id, beer_id, quantity) VALUES ($1, $2, $3)", orderID, cartItem.BeerID, cartItem.Quantity)
 		if err != nil {
