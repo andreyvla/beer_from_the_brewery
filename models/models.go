@@ -9,3 +9,8 @@ type Beer struct {
 	ImageURL    string
 	Type        string
 }
+
+type CartItem struct {
+	BeerID   int
+	Quantity int
+}
