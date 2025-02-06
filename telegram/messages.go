@@ -6,6 +6,12 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
+// sendMessage отправляет сообщение в Telegram.
+//
+// bot - указатель на экземпляр бота.
+// chatID - ID чата, куда нужно отправить сообщение.
+// text - текст сообщения.
+// parseMode - режим парсинга текста
 func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, parseMode string, keyboard *tgbotapi.InlineKeyboardMarkup) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	if parseMode != "" {
@@ -13,7 +19,8 @@ func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, parseMode stri
 	}
 
 	if keyboard != nil {
-		msg.ReplyMarkup = *keyboard // Разыменовываем указатель
+		msg.ReplyMarkup = *keyboard // Разыменовываем указатель для прикрепления клавиатуры.
+
 	}
 	if _, err := bot.Send(msg); err != nil {
 		log.Printf("Ошибка при отправке сообщения: %s", err.Error())

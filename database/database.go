@@ -10,15 +10,17 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	_ "github.com/lib/pq"
+	_ "github.com/lib/pq" // Импорт драйвера PostgreSQL
 )
 
+// ConnectToDatabase устанавливает соединение с базой данных.
 func ConnectToDatabase() (*sql.DB, error) {
-
+	// Загрузка переменных окружения из .env файла
 	err := godotenv.Load()
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при загрузке .env файла: %w", err)
 	}
+	// Получение параметров подключения из переменных окружения
 	user, ok := os.LookupEnv("POSTGRES_USER")
 	if !ok || user == "" {
 		return nil, fmt.Errorf("переменная окружения POSTGRES_USER не задана")
@@ -57,6 +59,8 @@ func ConnectToDatabase() (*sql.DB, error) {
 
 	return db, nil
 }
+
+// GetBeers получает список всего пива из базы данных.
 func GetBeers(db *sql.DB) ([]models.Beer, error) {
 	rows, err := db.Query("SELECT id, name, price, quantity, type, image_url, description FROM beers")
 	if err != nil {
@@ -76,6 +80,8 @@ func GetBeers(db *sql.DB) ([]models.Beer, error) {
 
 	return beers, nil
 }
+
+// SearchBeers ищет пиво по названию в базе данных.
 func SearchBeers(db *sql.DB, searchQuery string) ([]models.Beer, error) {
 	rows, err := db.Query("SELECT id, name, price, quantity, type, image_url, description FROM beers WHERE lower(name) LIKE lower($1)", "%"+searchQuery+"%")
 	if err != nil {
@@ -95,6 +101,8 @@ func SearchBeers(db *sql.DB, searchQuery string) ([]models.Beer, error) {
 
 	return beers, nil
 }
+
+// GetBeerByID получает информацию о пиве по его ID.
 func GetBeerByID(db *sql.DB, beerID int) (*models.Beer, error) {
 	var beer models.Beer
 	err := db.QueryRow("SELECT id, name, price, quantity, type, image_url, description FROM beers WHERE id = $1", beerID).Scan(&beer.ID, &beer.Name, &beer.Price, &beer.Quantity, &beer.Type, &beer.ImageURL, &beer.Description)
@@ -108,6 +116,7 @@ func GetBeerByID(db *sql.DB, beerID int) (*models.Beer, error) {
 
 }
 
+// UpdateBeerList периодически обновляет список доступного пива.
 func UpdateBeerList(db *sql.DB, beers *[]models.Beer, beersMutex *sync.Mutex) {
 	for {
 		newBeers, err := GetBeers(db)
@@ -115,7 +124,7 @@ func UpdateBeerList(db *sql.DB, beers *[]models.Beer, beersMutex *sync.Mutex) {
 			log.Printf("Ошибка при обновлении списка пива: %s", err.Error())
 		} else {
 			beersMutex.Lock()
-			*beers = newBeers // Обновляем список пива по указателю
+			*beers = newBeers
 			beersMutex.Unlock()
 		}
 
@@ -123,6 +132,7 @@ func UpdateBeerList(db *sql.DB, beers *[]models.Beer, beersMutex *sync.Mutex) {
 	}
 }
 
+// CreateOrder создает новый заказ в базе данных.
 func CreateOrder(db *sql.DB, userID int64, cartItems []models.CartItem) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -132,7 +142,7 @@ func CreateOrder(db *sql.DB, userID int64, cartItems []models.CartItem) error {
 
 	// Создаем запись в таблице orders, используя RETURNING id
 	orderDate := time.Now()
-	orderStatus := "new" // начальный статус заказа
+	orderStatus := "new"
 
 	var orderID int64 // Объявляем переменную для хранения orderID
 	row := tx.QueryRow("INSERT INTO orders (user_id, order_date, status) VALUES ($1, $2, $3) RETURNING id", userID, orderDate, orderStatus)

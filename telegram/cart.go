@@ -9,8 +9,9 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
+// handleCartCallback обрабатывает команду /cart, отображая содержимое корзины пользователя.
 func handleCartCallback(bot *tgbotapi.BotAPI, message *tgbotapi.Message, db *sql.DB) {
-	loadCart, ok := carts.Load(message.Chat.ID) // Используем message.Chat.ID
+	loadCart, ok := carts.Load(message.Chat.ID)
 
 	if !ok || loadCart == nil {
 		sendMessage(bot, message.Chat.ID, "Ваша корзина пуста.", "", nil)
@@ -49,6 +50,7 @@ func handleCartCallback(bot *tgbotapi.BotAPI, message *tgbotapi.Message, db *sql
 
 }
 
+// handleCheckoutCallback обрабатывает callback-запрос на оформление заказа.
 func handleCheckoutCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQuery, db *sql.DB) {
 	loadCart, ok := carts.Load(callbackQuery.Message.Chat.ID)
 	if !ok || loadCart == nil {
@@ -56,8 +58,8 @@ func handleCheckoutCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.Callba
 		return
 	}
 	cart := loadCart.(map[int]models.CartItem)
+	cartItems := make([]models.CartItem, 0, len(cart)) // Преобразуем map в slice для передачи в CreateOrder
 
-	cartItems := make([]models.CartItem, 0, len(cart))
 	for _, cartItem := range cart {
 		cartItems = append(cartItems, cartItem)
 	}
@@ -74,6 +76,7 @@ func handleCheckoutCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.Callba
 
 }
 
+// handleClearCartCallback обрабатывает callback-запрос на очистку корзины.
 func handleClearCartCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQuery) {
 
 	carts.Delete(callbackQuery.Message.Chat.ID)

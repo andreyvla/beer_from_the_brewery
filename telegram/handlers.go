@@ -13,6 +13,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
+// handleCommand обрабатывает команды, отправленные боту.
 func handleCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message, db *sql.DB) {
 	switch message.Command() {
 	case "start":
@@ -22,6 +23,7 @@ func handleCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message, db *sql.DB) 
 	}
 }
 
+// handleCallbackQuery обрабатывает callback-запросы от inline-клавиатур.
 func handleCallbackQuery(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQuery, db *sql.DB) {
 	if strings.HasPrefix(callbackQuery.Data, "add_to_cart:") {
 		handleAddToCartCallback(bot, callbackQuery, db)
@@ -29,21 +31,23 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQ
 		handleAdjustQuantityCallback(bot, callbackQuery, db)
 	} else if strings.HasPrefix(callbackQuery.Data, "confirm_add:") {
 		handleConfirmAddCallback(bot, callbackQuery, db)
-	} else if callbackQuery.Data == "checkout" { // Обработка оформления заказа
+	} else if callbackQuery.Data == "checkout" {
 		handleCheckoutCallback(bot, callbackQuery, db)
-	} else if callbackQuery.Data == "clear_cart" { // Обработка очистки корзины
+	} else if callbackQuery.Data == "clear_cart" {
 		handleClearCartCallback(bot, callbackQuery)
 	} else {
 		sendMessage(bot, callbackQuery.Message.Chat.ID, "Неизвестное действие.", "", nil)
 	}
 }
 
+// handleStartCommand обрабатывает команду /start.
 func handleStartCommand(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	msg := tgbotapi.NewMessage(message.Chat.ID, "Привет! Я бот для покупки пива.")
 	msg.ReplyMarkup = createMainKeyboard()
 	bot.Send(msg)
 }
 
+// handleAddToCartCallback обрабатывает callback-запрос на добавление пива в корзину.
 func handleAddToCartCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQuery, db *sql.DB) {
 	data := strings.Split(callbackQuery.Data, ":")
 	if len(data) != 3 {
@@ -68,12 +72,13 @@ func handleAddToCartCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.Callb
 		return
 	}
 
-	keyboard := createQuantityKeyboard(beerID, 1) // Начальное количество 1
+	keyboard := createQuantityKeyboard(beerID, 1)
 
 	sendMessage(bot, callbackQuery.Message.Chat.ID, fmt.Sprintf("Укажите количество %s:", beer.Name), "", &keyboard)
 
 }
 
+// handleAdjustQuantityCallback обрабатывает callback-запрос на изменение количества пива в корзине.
 func handleAdjustQuantityCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQuery, db *sql.DB) {
 
 	data := strings.Split(callbackQuery.Data, ":")
@@ -109,6 +114,7 @@ func handleAdjustQuantityCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.
 	}
 }
 
+// handleConfirmAddCallback обрабатывает callback-запрос на подтверждение добавления пива в корзину.
 func handleConfirmAddCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQuery, db *sql.DB) {
 	data := strings.Split(callbackQuery.Data, ":")
 	beerID, err := strconv.Atoi(data[1])
@@ -148,17 +154,18 @@ func handleConfirmAddCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.Call
 	sendMessage(bot, callbackQuery.Message.Chat.ID, fmt.Sprintf("%s (%d шт.) добавлен в корзину.", beer.Name, quantity), "", nil)
 }
 
+// handleBeerCallback обрабатывает команду "Показать пиво".
 func handleBeerCallback(bot *tgbotapi.BotAPI, message *tgbotapi.Message, db *sql.DB) {
-	beersMutex.Lock()   // Добавляем блокировку
-	beersList := beers  // Создаем копию
-	beersMutex.Unlock() // Освобождаем блокировку
+	beersMutex.Lock()
+	beersList := beers
+	beersMutex.Unlock()
 	var beerListText string
 
 	if len(beersList) == 0 {
 		beerListText = "Пиво закончилось :("
 	} else {
 		for _, beer := range beersList {
-			beerInfo := utils.FormatBeerInfo(beer, false) // false - краткая информация
+			beerInfo := utils.FormatBeerInfo(beer, false)
 			beerListText += fmt.Sprintf("%s\n\n", beerInfo)
 		}
 	}
@@ -167,6 +174,7 @@ func handleBeerCallback(bot *tgbotapi.BotAPI, message *tgbotapi.Message, db *sql
 
 }
 
+// handleMessage обрабатывает сообщения, не являющиеся командами.
 func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, db *sql.DB) {
 	if waitingForSearchQuery[message.Chat.ID] {
 		handleSearchMessage(bot, message, db)
@@ -183,14 +191,14 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, db *sql.DB) 
 				beerListText = "Пиво закончилось :("
 			} else {
 				for _, beer := range beersList {
-					beerInfo := utils.FormatBeerInfo(beer, false) // false - краткая информация
+					beerInfo := utils.FormatBeerInfo(beer, false)
 					beerListText += fmt.Sprintf("%s\n\n", beerInfo)
 				}
 			}
 
 			sendMessage(bot, message.Chat.ID, beerListText, "Markdown", nil)
 		case "Найти пиво":
-			handleSearchCallback(bot, message) // Вызываем как callback, чтобы запустить поиск
+			handleSearchCallback(bot, message)
 		case "Корзина":
 			handleCartCallback(bot, message, db)
 		default:
