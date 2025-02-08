@@ -12,7 +12,7 @@ import (
 // chatID - ID чата, куда нужно отправить сообщение.
 // text - текст сообщения.
 // parseMode - режим парсинга текста
-func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, parseMode string, keyboard *tgbotapi.InlineKeyboardMarkup) {
+func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, parseMode string, keyboard *tgbotapi.InlineKeyboardMarkup, logger *log.Logger) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	if parseMode != "" {
 		msg.ParseMode = parseMode
@@ -23,6 +23,6 @@ func sendMessage(bot *tgbotapi.BotAPI, chatID int64, text string, parseMode stri
 
 	}
 	if _, err := bot.Send(msg); err != nil {
-		log.Printf("Ошибка при отправке сообщения: %s", err.Error())
+		logger.Printf("Ошибка при отправке сообщения: %s", err.Error())
 	}
 }
