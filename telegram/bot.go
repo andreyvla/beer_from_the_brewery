@@ -3,7 +3,9 @@ package telegram
 import (
 	"beer_from_the_brewery/database"
 	"beer_from_the_brewery/models"
+	"context"
 	"sync"
+	"time"
 
 	"database/sql"
 	"log"
@@ -21,7 +23,7 @@ var (
 )
 
 // StartBot запускает Telegram бота.
-func StartBot(db *sql.DB) {
+func StartBot(db *sql.DB, logger *log.Logger) {
 	// Получаем токен бота из переменных окружения.
 	botToken := os.Getenv("BOT_TOKEN")
 	if botToken == "" {
@@ -34,18 +36,22 @@ func StartBot(db *sql.DB) {
 		log.Fatal(err)
 	}
 
-	log.Printf("Авторизован как @%s", bot.Self.UserName)
+	logger.Printf("Авторизован как @%s", bot.Self.UserName)
 
-	// Инициализируем список пива при запуске
+	// Инициализируем список пива при запуске с контекстом и таймаутом
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	beersMutex.Lock()
-	beers, err = database.GetBeers(db)
-	if err != nil {
-		log.Printf("Ошибка при начальной загрузке списка пива: %s", err.Error())
-	}
+	beers, err = database.GetBeers(ctx, db)
 	beersMutex.Unlock()
 
-	// Запускаем горутину для периодического обновления списка пива.
-	go database.UpdateBeerList(db, &beers, beersMutex)
+	if err != nil {
+		logger.Printf("Ошибка при начальной загрузке списка пива: %s", err.Error())
+	}
+
+	// Запускаем горутину для периодического обновления списка пива с контекстом.
+	go database.UpdateBeerList(context.Background(), db, &beers, beersMutex, logger) // Передаем контекст и логгер
 
 	// Получаем канал обновлений от Telegram.
 	updates := getUpdatesChannel(bot)
@@ -53,11 +59,11 @@ func StartBot(db *sql.DB) {
 	// Обрабатываем обновления.
 	for update := range updates {
 		if update.Message != nil && update.Message.IsCommand() {
-			handleCommand(bot, update.Message, db)
+			handleCommand(bot, update.Message, db, logger)
 		} else if update.CallbackQuery != nil {
-			handleCallbackQuery(bot, update.CallbackQuery, db)
+			handleCallbackQuery(bot, update.CallbackQuery, db, logger)
 		} else if update.Message != nil && !update.Message.IsCommand() {
-			handleMessage(bot, update.Message, db)
+			handleMessage(bot, update.Message, db, logger)
 		}
 	}
 }

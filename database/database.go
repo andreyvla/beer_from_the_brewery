@@ -2,6 +2,7 @@ package database
 
 import (
 	"beer_from_the_brewery/models"
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -61,8 +62,10 @@ func ConnectToDatabase() (*sql.DB, error) {
 }
 
 // GetBeers получает список всего пива из базы данных.
-func GetBeers(db *sql.DB) ([]models.Beer, error) {
-	rows, err := db.Query("SELECT id, name, price, quantity, type, image_url, description FROM beers")
+func GetBeers(ctx context.Context, db *sql.DB) ([]models.Beer, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	rows, err := db.QueryContext(ctx, "SELECT id, name, price, quantity, type, image_url, description FROM beers")
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при выполнении запросsа: %w", err)
 	}
@@ -82,8 +85,10 @@ func GetBeers(db *sql.DB) ([]models.Beer, error) {
 }
 
 // SearchBeers ищет пиво по названию в базе данных.
-func SearchBeers(db *sql.DB, searchQuery string) ([]models.Beer, error) {
-	rows, err := db.Query("SELECT id, name, price, quantity, type, image_url, description FROM beers WHERE lower(name) LIKE lower($1)", "%"+searchQuery+"%")
+func SearchBeers(ctx context.Context, db *sql.DB, searchQuery string) ([]models.Beer, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	rows, err := db.QueryContext(ctx, "SELECT id, name, price, quantity, type, image_url, description FROM beers WHERE lower(name) LIKE lower($1)", "%"+searchQuery+"%")
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при выполнении запроса: %w", err)
 	}
@@ -103,9 +108,11 @@ func SearchBeers(db *sql.DB, searchQuery string) ([]models.Beer, error) {
 }
 
 // GetBeerByID получает информацию о пиве по его ID.
-func GetBeerByID(db *sql.DB, beerID int) (*models.Beer, error) {
+func GetBeerByID(ctx context.Context, db *sql.DB, beerID int) (*models.Beer, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	var beer models.Beer
-	err := db.QueryRow("SELECT id, name, price, quantity, type, image_url, description FROM beers WHERE id = $1", beerID).Scan(&beer.ID, &beer.Name, &beer.Price, &beer.Quantity, &beer.Type, &beer.ImageURL, &beer.Description)
+	err := db.QueryRowContext(ctx, "SELECT id, name, price, quantity, type, image_url, description FROM beers WHERE id = $1", beerID).Scan(&beer.ID, &beer.Name, &beer.Price, &beer.Quantity, &beer.Type, &beer.ImageURL, &beer.Description)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -117,24 +124,35 @@ func GetBeerByID(db *sql.DB, beerID int) (*models.Beer, error) {
 }
 
 // UpdateBeerList периодически обновляет список доступного пива.
-func UpdateBeerList(db *sql.DB, beers *[]models.Beer, beersMutex *sync.Mutex) {
+func UpdateBeerList(ctx context.Context, db *sql.DB, beers *[]models.Beer, beersMutex *sync.Mutex, logger *log.Logger) { // Добавили context и logger
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
 	for {
-		newBeers, err := GetBeers(db)
-		if err != nil {
-			log.Printf("Ошибка при обновлении списка пива: %s", err.Error())
-		} else {
-			beersMutex.Lock()
-			*beers = newBeers
-			beersMutex.Unlock()
+		select {
+		case <-ctx.Done():
+			logger.Println("Обновление списка пива остановлено.")
+			return
+		case <-ticker.C:
+			newBeers, err := GetBeers(ctx, db)
+			if err != nil {
+				logger.Printf("Ошибка при обновлении списка пива: %s", err.Error())
+			} else {
+				beersMutex.Lock()
+				*beers = newBeers
+				beersMutex.Unlock()
+			}
 		}
 
-		time.Sleep(5 * time.Minute)
 	}
 }
 
 // CreateOrder создает новый заказ в базе данных.
-func CreateOrder(db *sql.DB, userID int64, cartItems []models.CartItem) error {
-	tx, err := db.Begin()
+func CreateOrder(ctx context.Context, db *sql.DB, userID int64, cartItems []models.CartItem) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("не удалось начать транзакцию: %w", err)
 	}
